@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clustering Results</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin-top: 20px;
+        }
+
+        .container {
+            display: flex;
+            justify-content: space-evenly;
+            flex-wrap: wrap;
+            margin: 20px;
+            gap: 30px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .scatter {
+            flex: 1;
+            min-width: 45%;
+            height: 500px;
+            max-width: 600px;
+            margin: 10px;
+        }
+
+        .image-area {
+            flex: 1;
+            min-width: 45%;
+            max-width: 600px;
+            text-align: center;
+            margin: 10px;
+        }
+
+         #selected-canvas {
+            max-width: 500px;
+            max-height: 400px;
+        }
+
+        .hover-info {
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px;
+            position: absolute;
+            display: none;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Clustering Results</h1>
+
+    <div class="container">
+        <div class="scatter" id="scatter-plot"></div>
+
+        <div class="image-area">
+            <h3>Image Preview with Bounding Box</h3>
+            <canvas id="selected-canvas"></canvas>
+            <div id="hover-info" class="hover-info"></div>
+        </div>
+    </div>
+
+    <script>
+        // 从JSON文件中读取聚类数据
+        fetch('cluster_data.json')
+            .then(response => response.json())
+            .then(clusterData => {
+                let scatterData = [];
+                let imageMap = {};
+                let bboxMap = {};  // 用于保存每个点的 bbox 数据
+
+                // 整理每个类别的数据
+                Object.keys(clusterData).forEach((cluster, index) => {
+                    let clusterPoints = clusterData[cluster];
+                    let xValues = [];
+                    let yValues = [];
+                    clusterPoints.forEach((item) => {
+                        xValues.push(item.x);  // 使用降维后的 x 坐标
+                        yValues.push(item.y);  // 使用降维后的 y 坐标
+                        imageMap[`${item.x},${item.y}`] = item.file_name;  // 映射坐标到文件名
+                        bboxMap[`${item.x},${item.y}`] = item.bbox;  // 映射坐标到 bbox
+                    });
+
+                    scatterData.push({
+                        x: xValues,
+                        y: yValues,
+                        mode: 'markers',
+                        type: 'scatter',
+                        name: `Cluster ${cluster}`,
+                        marker: {
+                            size: 6,  // 增大点的大小
+
+                        },
+                        // hoverinfo: 'text',  // 显示文本提示
+                        // text: clusterPoints.map(item => `File: ${item.file_name}`)  // 在 hover 时显示文件名
+                    });
+                });
+
+                // 使用 Plotly 绘制散点图
+                const layout = {
+                    title: 'Clustered Data Points',
+                    xaxis: { title: 'X Coordinate' },
+                    yaxis: { title: 'Y Coordinate' },
+                    hovermode: 'closest',  // 改进 hover 效果
+                };
+
+                Plotly.newPlot('scatter-plot', scatterData, layout);
+
+                // 绑定点击事件，点击点时显示图像和 bounding box
+                document.getElementById('scatter-plot').on('plotly_click', function(eventData) {
+                    const clickedPoint = eventData.points[0];
+                    const x = clickedPoint.x;
+                    const y = clickedPoint.y;
+
+                    // 根据点击的坐标获取文件名和 bbox
+                    const fileName = imageMap[`${x},${y}`];
+                    const bbox = bboxMap[`${x},${y}`];
+
+                    if (fileName) {
+                        const img = new Image();
+                        img.onload = function() {
+                            const canvas = document.getElementById('selected-canvas');
+                            const ctx = canvas.getContext('2d');
+                            const bboxWidth = bbox[2];
+                            const bboxHeight = bbox[3];
+
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            ctx.drawImage(img, 0, 0);
+
+                            // 绘制 bounding box
+                            ctx.beginPath();
+                            ctx.rect(bbox[0], bbox[1], bboxWidth, bboxHeight);
+                            ctx.lineWidth = 4;
+                            ctx.strokeStyle = 'red';
+                            ctx.stroke();
+                        };
+                        img.src = `images/train/${fileName}`;  // 替换成你的图片路径
+                    }
+                });
+
+                // 在散点图上显示hover效果
+                const hoverInfo = document.getElementById('hover-info');
+                document.getElementById('scatter-plot').on('plotly_hover', function(eventData) {
+                    const point = eventData.points[0];
+                    const x = point.x;
+                    const y = point.y;
+
+                    const bbox = bboxMap[`${x},${y}`];
+                    hoverInfo.style.display = 'block';
+                    hoverInfo.style.left = `${point.event.x + 10}px`;
+                    hoverInfo.style.top = `${point.event.y + 10}px`;
+
+                    hoverInfo.innerHTML = `Bounding Box: [${bbox[0]}, ${bbox[1]}, ${bbox[2]}, ${bbox[3]}]`;
+                });
+
+                document.getElementById('scatter-plot').on('plotly_unhover', function() {
+                    hoverInfo.style.display = 'none';
+                });
+            });
+    </script>
+
+</body>
+</html>
